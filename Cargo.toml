@@ -10,3 +10,4 @@ panic-halt = "0.2"
 atsamd-hal = { version = "0.18", features = ["samd21g"] }
 ssd1306 = "0.8"
 embedded-graphics = "0.8"
+embedded-hal = "0.2"
