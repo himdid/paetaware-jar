@@ -11,7 +11,7 @@ Currently developed and verified in the **Mokxi** circuit simulator prior to bre
 ### Core Components
 * **MCU:** Seeed Studio XIAO SAMD21 (`ATSAMD21G18A`, ARM Cortex-M0+ @ 48 MHz)
 * **Display:** 0.96" SSD1306 128×64 I2C OLED (`0x3C`)
-* **Planned Hardware:** 3× tactile pushbuttons, passive piezo buzzer, CR2450 coin-cell power
+* **Planned Hardware:** 4× tactile pushbuttons, passive piezo buzzer, CR2450 coin-cell power & more
 
 ### Pin Mapping
 
