@@ -1,6 +1,6 @@
 <img width="508" height="616" alt="it begins" src="https://github.com/user-attachments/assets/c819b44f-f408-46db-b58b-12a546037dd3" />
 
-# peata-ware-one
+# PaetaWare ONE
 
 Bare-metal `#![no_std]` Rust firmware for a virtual digital pet handheld, targeting the **Seeed XIAO SAMD21** (`ATSAMD21G18A`, ARM Cortex-M0+) and a **0.96" SSD1306 128×64 I2C OLED** display.
 
