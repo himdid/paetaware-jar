@@ -41,4 +41,8 @@ Currently developed and verified in the **Mokxi** circuit simulator prior to bre
 
 [ ] To be announced...
 
+## License
+
+Licensed under the [MIT License](LICENSE).
+
 
