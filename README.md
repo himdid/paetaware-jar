@@ -6,7 +6,7 @@ Bare-metal `#![no_std]` Rust firmware for a virtual digital pet handheld, target
 
 Currently developed and verified in the **Mokxi** circuit simulator prior to breadboard and custom 3D-printed enclosure assembly.
 
-## Hardware & Pinout
+## Current Hardware & Pinout
 
 | Peripheral | Signal | XIAO Pin | SAMD21 Port | Notes |
 | :--- | :--- | :--- | :--- | :--- |
