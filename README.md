@@ -39,10 +39,6 @@ Currently developed and verified in the **Mokxi** circuit simulator prior to bre
 
 [ ] Passive buzzer chiptune/feedback tones
 
-[ ] Physical breadboard bring-up, CR2450 power testing
-
-[ ] Building on permanent perfboard and 3D-printed enclosure
-
 [ ] To be announced...
 
 
