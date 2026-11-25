@@ -23,4 +23,26 @@ Currently developed and verified in the **Mokxi** circuit simulator prior to bre
     ├── main.rs          # Peripheral init & main animation/input loop
     ├── display.rs       # Bit-banged SoftI2c driver, SSD1306 setup & 2x sprite scaler
     └── sprites.rs       # 1-bit monochrome bitmap frames (16×16)
+```
+
+## Roadmap:
+
+[x] Bare-metal no_std toolchain & Cortex-M0+ linker setup
+
+[x] Custom SoftI2c driver & SSD1306 framebuffer rendering
+
+[x] 2× nearest-neighbor sprite scaling & multi-frame idle animation
+
+[ ] Tactile button inputs with internal pull-ups & debouncing
+
+[ ] Virtual pet state machine (hunger, happiness, energy, sleep cycles)
+
+[ ] Passive buzzer chiptune/feedback tones
+
+[ ] Physical breadboard bring-up, CR2450 power testing
+
+[ ] Building on permanent perfboard and 3D-printed enclosure
+
+[ ] To be announced...
+
 
