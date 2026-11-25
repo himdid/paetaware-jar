@@ -2,6 +2,8 @@
 #![no_main]
 
 mod display;
+mod input;
+mod pet;
 mod sprites;
 
 use atsamd_hal::gpio::Pins;
@@ -12,7 +14,8 @@ use cortex_m_rt::entry;
 use panic_halt as _;
 
 use display::Screen;
-use sprites::{PET_IDLE_0, PET_IDLE_1};
+use input::{InputEvent, Inputs};
+use pet::Pet;
 
 #[entry]
 fn main() -> ! {
@@ -27,19 +30,41 @@ fn main() -> ! {
         pins.pa09.into_push_pull_output(),
     );
 
+    let mut inputs = Inputs::new(
+        pins.pa02.into_pull_up_input(), // D0: Left
+        pins.pa04.into_pull_up_input(), // D1: Right
+        pins.pa10.into_pull_up_input(), // D2: Confirm (A)
+        pins.pa11.into_pull_up_input(), // D3: Cancel (B)
+        pins.pa06.into_pull_up_input(), // D10: Pedometer step switch
+    );
+
+    let mut pet = Pet::new();
     let mut frame: u8 = 0;
+    let mut tick_counter: u32 = 0;
+
+    screen.render(&pet, frame);
 
     loop {
-        screen.clear();
-        let sprite = if frame == 0 { &PET_IDLE_0 } else { &PET_IDLE_1 };
-        screen.draw_sprite_2x(sprite, 48, 16);
-        screen.flush();
+        if let Some(event) = inputs.poll() {
+            match event {
+                InputEvent::Left => pet.move_left(),
+                InputEvent::Right => pet.move_right(),
+                InputEvent::Confirm => pet.confirm(),
+                InputEvent::Cancel => pet.cancel(),
+                InputEvent::Step => pet.record_step(),
+            }
+            screen.render(&pet, frame);
+        }
 
-        frame ^= 1;
+        tick_counter += 1;
+        if tick_counter >= 2_500 {
+            tick_counter = 0;
+            frame ^= 1;
+            pet.tick();
+            screen.render(&pet, frame);
+            let _ = led.toggle();
+        }
 
-        led.set_low().unwrap();
-        asm::delay(250_000);
-        led.set_high().unwrap();
-        asm::delay(250_000);
+        asm::delay(2_000);
     }
 }
