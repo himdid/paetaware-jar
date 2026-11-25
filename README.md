@@ -8,6 +8,13 @@ Currently developed and verified in the **Mokxi** circuit simulator prior to bre
 
 ## Hardware & Pinout
 
+### Core Components
+* **MCU:** Seeed Studio XIAO SAMD21 (`ATSAMD21G18A`, ARM Cortex-M0+ @ 48 MHz)
+* **Display:** 0.96" SSD1306 128×64 I2C OLED (`0x3C`)
+* **Planned Hardware:** 4× tactile pushbuttons, passive piezo buzzer, CR2450 coin-cell power & more
+
+### Pin Mapping
+
 | Peripheral | Signal | XIAO Pin | SAMD21 Port | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | SSD1306 OLED (128×64) | `SDA` | `D4 / A4` | `PA08` | Software bit-banged I2C (`0x3C`) |
