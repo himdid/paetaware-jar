@@ -6,7 +6,14 @@ Bare-metal `#![no_std]` Rust firmware for a virtual digital pet handheld, target
 
 Currently developed and verified in the **Mokxi** circuit simulator prior to breadboard and custom 3D-printed enclosure assembly.
 
-## Current Hardware & Pinout
+## Hardware & Pinout
+
+### Core Components
+* **MCU:** Seeed Studio XIAO SAMD21 (`ATSAMD21G18A`, ARM Cortex-M0+ @ 48 MHz)
+* **Display:** 0.96" SSD1306 128×64 I2C OLED (`0x3C`)
+* **Planned Hardware:** 3× tactile pushbuttons, passive piezo buzzer, CR2450 coin-cell power
+
+### Pin Mapping
 
 | Peripheral | Signal | XIAO Pin | SAMD21 Port | Notes |
 | :--- | :--- | :--- | :--- | :--- |
