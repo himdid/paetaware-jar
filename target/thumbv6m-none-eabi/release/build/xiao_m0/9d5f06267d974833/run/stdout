@@ -1,3 +1,0 @@
-cargo:rustc-link-search=C:\dev\peata-ware-one\target\thumbv6m-none-eabi\release\build\xiao_m0/9d5f06267d974833\out
-cargo:rerun-if-changed=memory.x
-cargo:rerun-if-changed=build.rs
