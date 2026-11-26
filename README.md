@@ -2,9 +2,11 @@
 
 # PaetaWare ONE
 
-Bare-metal `#![no_std]` Rust firmware for a modular **"Brain-in-a-Jar" wetware specimen core**, targeting the **Seeed XIAO SAMD21** (`ATSAMD21G18A`, ARM Cortex-M0+) and a **0.96" SSD1306 128×64 I2C OLED** display.
+Bare-metal `#![no_std]` Rust firmware for a modular **"Brain-in-a-Jar" specimen core**, targeting the **Seeed XIAO SAMD21** (`ATSAMD21G18A`, ARM Cortex-M0+) and a **0.96" SSD1306 128×64 I2C OLED** display.
 
-Designed to function both as a standalone pocket containment unit and as a plug-in neural core that docks into external hardware shells (Raspberry Pi Pico docking station, desktop AI assistant base, autonomous rover, or battle arena) over UART. Currently developed and verified in the **Mokxi** circuit simulator prior to breadboard and custom 3D-printed enclosure assembly.
+Designed to function both as a standalone pocket containment unit and as a plug-in neural core that docks into external hardware shells over UART. 
+
+Currently developed and verified in the **Mokxi** circuit simulator prior to breadboard and custom 3D-printed enclosure assembly.
 
 ## Features
 
