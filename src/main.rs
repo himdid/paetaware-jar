@@ -2,9 +2,10 @@
 #![no_main]
 
 mod display;
+mod face;
 mod input;
 mod pet;
-mod sprites;
+mod protocol;
 
 use atsamd_hal::gpio::Pins;
 use atsamd_hal::pac::Peripherals;
@@ -16,10 +17,11 @@ use panic_halt as _;
 use display::Screen;
 use input::{InputEvent, Inputs};
 use pet::Pet;
+use protocol::DockLink;
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take().unwrap();
+    let mut peripherals = Peripherals::take().unwrap();
     let pins = Pins::new(peripherals.port);
 
     let mut led = pins.pa17.into_push_pull_output();
@@ -36,19 +38,34 @@ fn main() -> ! {
         pins.pa10.into_pull_up_input(), // D2: Confirm (A)
         pins.pa11.into_pull_up_input(), // D3: Cancel (B)
         pins.pa06.into_pull_up_input(), // D10: Pedometer step switch
-        pins.pa05.into_pull_up_input(), // D9: Sleep slide switch
+        pins.pa05.into_pull_up_input(), // D9: Standby slide switch
+    );
+
+    let mut dock = DockLink::new(
+        peripherals.sercom4,
+        &mut peripherals.pm,
+        &mut peripherals.gclk,
+        pins.pb08.into_alternate(), // D6: SERCOM4 TX
+        pins.pb09.into_alternate(), // D7: SERCOM4 RX
     );
 
     let mut pet = Pet::new();
-    let mut frame: u8 = 0;
-    let mut tick_counter: u32 = 0;
+    let mut anim_counter: u16 = 0;
+    let mut tx_counter: u8 = 0;
 
     pet.set_sleeping(inputs.is_sleep_switch_on());
-    screen.render(&pet, frame);
+    dock.send_telemetry(&pet.to_payload());
+    screen.render(&pet);
 
     loop {
+        if let Some(pkt) = dock.poll() {
+            pet.handle_packet(pkt);
+            screen.render(&pet);
+        }
+
         if pet.set_sleeping(inputs.is_sleep_switch_on()) {
-            screen.render(&pet, frame);
+            dock.send_telemetry(&pet.to_payload());
+            screen.render(&pet);
         }
 
         if let Some(event) = inputs.poll() {
@@ -59,18 +76,24 @@ fn main() -> ! {
                 InputEvent::Cancel => pet.cancel(),
                 InputEvent::Step => pet.record_step(),
             }
-            screen.render(&pet, frame);
+            dock.send_telemetry(&pet.to_payload());
+            screen.render(&pet);
         }
 
-        tick_counter += 1;
-        if tick_counter >= 2_500 {
-            tick_counter = 0;
-            frame ^= 1;
+        anim_counter += 1;
+        if anim_counter >= 180 {
+            anim_counter = 0;
             pet.tick();
-            screen.render(&pet, frame);
-            let _ = led.toggle();
+            screen.render(&pet);
+
+            tx_counter += 1;
+            if tx_counter >= 20 {
+                tx_counter = 0;
+                dock.send_telemetry(&pet.to_payload());
+                let _ = led.toggle();
+            }
         }
 
-        asm::delay(2_000);
+        asm::delay(1_000);
     }
 }
