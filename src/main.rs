@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod audio;
 mod display;
 mod input;
 mod pet;
@@ -13,6 +14,7 @@ use cortex_m::asm;
 use cortex_m_rt::entry;
 use panic_halt as _;
 
+use audio::Buzzer;
 use display::Screen;
 use input::{InputEvent, Inputs};
 use pet::Pet;
@@ -38,20 +40,42 @@ fn main() -> ! {
         pins.pa06.into_pull_up_input(), // D10: Pedometer step switch
     );
 
+    let mut buzzer = Buzzer::new(pins.pa07.into_push_pull_output()); // D8: Passive Buzzer
+
     let mut pet = Pet::new();
     let mut frame: u8 = 0;
     let mut tick_counter: u32 = 0;
 
     screen.render(&pet, frame);
+    buzzer.beep_confirm();
 
     loop {
         if let Some(event) = inputs.poll() {
             match event {
-                InputEvent::Left => pet.move_left(),
-                InputEvent::Right => pet.move_right(),
-                InputEvent::Confirm => pet.confirm(),
-                InputEvent::Cancel => pet.cancel(),
-                InputEvent::Step => pet.record_step(),
+                InputEvent::Left => {
+                    pet.move_left();
+                    buzzer.beep_move();
+                }
+                InputEvent::Right => {
+                    pet.move_right();
+                    buzzer.beep_move();
+                }
+                InputEvent::Confirm => {
+                    pet.confirm();
+                    buzzer.beep_confirm();
+                }
+                InputEvent::Cancel => {
+                    pet.cancel();
+                    buzzer.beep_cancel();
+                }
+                InputEvent::Step => {
+                    pet.record_step();
+                    if pet.steps % 10 == 0 {
+                        buzzer.beep_milestone();
+                    } else {
+                        buzzer.beep_step();
+                    }
+                }
             }
             screen.render(&pet, frame);
         }
