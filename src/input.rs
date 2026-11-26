@@ -1,4 +1,4 @@
-use atsamd_hal::gpio::{Input, Pin, PullUp, PA02, PA04, PA06, PA10, PA11};
+use atsamd_hal::gpio::{Input, Pin, PullUp, PA02, PA04, PA05, PA06, PA10, PA11};
 use atsamd_hal::prelude::*;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -16,6 +16,7 @@ pub struct Inputs {
     confirm: Pin<PA10, Input<PullUp>>,
     cancel: Pin<PA11, Input<PullUp>>,
     step_switch: Pin<PA06, Input<PullUp>>,
+    sleep_switch: Pin<PA05, Input<PullUp>>,
     armed: bool,
     release_streak: u8,
 }
@@ -27,6 +28,7 @@ impl Inputs {
         confirm: Pin<PA10, Input<PullUp>>,
         cancel: Pin<PA11, Input<PullUp>>,
         step_switch: Pin<PA06, Input<PullUp>>,
+        sleep_switch: Pin<PA05, Input<PullUp>>,
     ) -> Self {
         Self {
             left,
@@ -34,13 +36,17 @@ impl Inputs {
             confirm,
             cancel,
             step_switch,
+            sleep_switch,
             armed: true,
             release_streak: 0,
         }
     }
 
-    /// Fires strictly once per press and will not re-arm until all buttons
-    /// stay cleanly released for 15 consecutive polls (eliminates bounce).
+    /// True when the physical slide switch shorts D9 (PA05) to GND
+    pub fn is_sleep_switch_on(&self) -> bool {
+        self.sleep_switch.is_low().unwrap_or(false)
+    }
+
     pub fn poll(&mut self) -> Option<InputEvent> {
         let current = [
             self.left.is_low().unwrap_or(false),

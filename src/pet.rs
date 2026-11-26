@@ -2,16 +2,14 @@
 pub enum MenuOption {
     Feed = 0,
     Play = 1,
-    Sleep = 2,
-    Stats = 3,
+    Stats = 2,
 }
 
 impl MenuOption {
     pub fn from_index(idx: u8) -> Self {
-        match idx % 4 {
+        match idx % 3 {
             0 => MenuOption::Feed,
             1 => MenuOption::Play,
-            2 => MenuOption::Sleep,
             _ => MenuOption::Stats,
         }
     }
@@ -53,16 +51,37 @@ impl Pet {
     }
 
     pub fn move_left(&mut self) {
-        self.selected_menu = (self.selected_menu + 3) % 4;
+        if self.state == PetState::Sleeping {
+            return;
+        }
+        self.selected_menu = (self.selected_menu + 2) % 3;
     }
 
     pub fn move_right(&mut self) {
-        self.selected_menu = (self.selected_menu + 1) % 4;
+        if self.state == PetState::Sleeping {
+            return;
+        }
+        self.selected_menu = (self.selected_menu + 1) % 3;
+    }
+
+    /// Syncs pet sleep state to the hardware slide switch.
+    /// Returns true if the state changed (triggering an immediate screen redraw).
+    pub fn set_sleeping(&mut self, sleeping: bool) -> bool {
+        if sleeping && self.state != PetState::Sleeping {
+            self.state = PetState::Sleeping;
+            self.show_stats = false;
+            self.state_timer = 0;
+            true
+        } else if !sleeping && self.state == PetState::Sleeping {
+            self.state = PetState::Idle;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn record_step(&mut self) {
         self.steps = self.steps.saturating_add(1);
-        // Every 10 steps boosts happiness by 1 (and wakes pet if sleeping)
         if self.steps % 10 == 0 {
             self.happiness = (self.happiness + 1).min(4);
             if self.state != PetState::Sleeping {
@@ -73,6 +92,9 @@ impl Pet {
     }
 
     pub fn confirm(&mut self) {
+        if self.state == PetState::Sleeping {
+            return;
+        }
         if self.show_stats {
             self.show_stats = false;
             return;
@@ -80,26 +102,17 @@ impl Pet {
 
         match MenuOption::from_index(self.selected_menu) {
             MenuOption::Feed => {
-                if self.state != PetState::Sleeping {
-                    self.hunger = (self.hunger + 1).min(4);
-                    self.state = PetState::Eating;
-                    self.state_timer = 3;
-                }
+                self.hunger = (self.hunger + 1).min(4);
+                self.state = PetState::Eating;
+                self.state_timer = 3;
             }
             MenuOption::Play => {
-                if self.state != PetState::Sleeping && self.energy > 0 {
+                if self.energy > 0 {
                     self.happiness = (self.happiness + 1).min(4);
                     self.energy = self.energy.saturating_sub(1);
                     self.state = PetState::Happy;
                     self.state_timer = 3;
                 }
-            }
-            MenuOption::Sleep => {
-                self.state = if self.state == PetState::Sleeping {
-                    PetState::Idle
-                } else {
-                    PetState::Sleeping
-                };
             }
             MenuOption::Stats => {
                 self.show_stats = true;
@@ -110,8 +123,6 @@ impl Pet {
     pub fn cancel(&mut self) {
         if self.show_stats {
             self.show_stats = false;
-        } else if self.state == PetState::Sleeping {
-            self.state = PetState::Idle;
         }
     }
 

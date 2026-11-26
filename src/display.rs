@@ -214,22 +214,28 @@ impl Screen {
         };
         self.draw_sprite_2x(sprite, 48, 14);
 
-        // Bottom 4-item menu bar
-        let labels = ["FED", "PLY", "SLP", "STS"];
-        for (i, label) in labels.iter().enumerate() {
-            let x = (i as i32) * 32 + 4;
-            if pet.selected_menu == i as u8 {
-                Rectangle::new(Point::new(x - 2, 52), Size::new(26, 11))
-                    .into_styled(fill_on)
-                    .draw(&mut self.oled)
-                    .unwrap();
-                Text::new(label, Point::new(x + 3, 60), text_off)
-                    .draw(&mut self.oled)
-                    .unwrap();
-            } else {
-                Text::new(label, Point::new(x + 3, 60), text_on)
-                    .draw(&mut self.oled)
-                    .unwrap();
+        // Bottom 3-item menu bar (or sleep banner when slide switch is ON)
+        if pet.state == PetState::Sleeping {
+            Text::new("-- SLEEPING --", Point::new(29, 60), text_on)
+                .draw(&mut self.oled)
+                .unwrap();
+        } else {
+            let labels = ["FED", "PLY", "STS"];
+            for (i, label) in labels.iter().enumerate() {
+                let x = (i as i32) * 42 + 10;
+                if pet.selected_menu == i as u8 {
+                    Rectangle::new(Point::new(x - 2, 52), Size::new(26, 11))
+                        .into_styled(fill_on)
+                        .draw(&mut self.oled)
+                        .unwrap();
+                    Text::new(label, Point::new(x + 3, 60), text_off)
+                        .draw(&mut self.oled)
+                        .unwrap();
+                } else {
+                    Text::new(label, Point::new(x + 3, 60), text_on)
+                        .draw(&mut self.oled)
+                        .unwrap();
+                }
             }
         }
 
