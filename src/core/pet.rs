@@ -1,11 +1,12 @@
-use crate::face::{FaceEngine, Mood};
+use crate::core::face::{FaceEngine, Mood};
+use crate::platform::{BubbleRender, EyeRenderState, RenderScene};
 use crate::protocol::{CorePayload, DockShell, IncomingPacket};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum MenuOption {
-    Ping = 0, // PING: Tap containment glass / neural stimulus
-    Dose = 1, // DOSE: Flush nutrient fluid (costs 2 step credits)
-    Scan = 2, // SCAN: Specimen telemetry & wallet readout
+    Ping = 0, // PING: Tap containment glass / neural stimulus[cite: 5]
+    Dose = 1, // DOSE: Flush nutrient fluid (costs 2 step credits)[cite: 5]
+    Scan = 2, // SCAN: Specimen telemetry & wallet readout[cite: 5]
 }
 
 impl MenuOption {
@@ -24,21 +25,13 @@ pub enum JarMode {
     Stasis,
 }
 
-#[derive(Copy, Clone)]
-pub struct Bubble {
-    pub x: i16,
-    pub y: i16,
-    pub speed: i16,
-    pub large: bool,
-}
-
 pub struct Pet {
-    pub fluid: u8,         // 0..=4 (Nutrient Electrolyte Level)
-    pub lucidity: u8,      // 0..=4 (Neural Clarity / Engagement)
-    pub static_load: u8,   // 0..=4 (Synaptic Noise / Agitation)
-    pub bond: u8,          // 0..=255 (Affinity / Bond)
-    pub steps: u32,        // Lifetime kinetic steps (XP)
-    pub credits: u16,      // Spendable step currency (1 coin per 10 steps)
+    pub fluid: u8,         // 0..=4 (Nutrient Electrolyte Level)[cite: 5]
+    pub lucidity: u8,      // 0..=4 (Neural Clarity / Engagement)[cite: 5]
+    pub static_load: u8,   // 0..=4 (Synaptic Noise / Agitation)[cite: 5]
+    pub bond: u8,          // 0..=255 (Affinity / Bond)[cite: 5]
+    pub steps: u32,        // Lifetime kinetic steps (XP)[cite: 5]
+    pub credits: u16,      // Spendable step currency (1 coin per 10 steps)[cite: 5]
     pub mode: JarMode,
     pub docked_shell: DockShell,
     pub selected_menu: u8,
@@ -46,7 +39,7 @@ pub struct Pet {
     pub hud_ticks: u8,
     pub status_banner: &'static str,
     pub face: FaceEngine,
-    pub bubbles: [Bubble; 5],
+    pub bubbles: [BubbleRender; 5],
     pub bubble_boost: u8,
     banner_ticks: u8,
     decay_ticks: u16,
@@ -61,7 +54,7 @@ impl Pet {
             static_load: 1,
             bond: 10,
             steps: 0,
-            credits: 5, // Starting reserve of 5 step coins
+            credits: 5, // Starting reserve of 5 step coins[cite: 5]
             mode: JarMode::Active,
             docked_shell: DockShell::None,
             selected_menu: 0,
@@ -70,11 +63,11 @@ impl Pet {
             status_banner: "",
             face: FaceEngine::new(),
             bubbles: [
-                Bubble { x: 14, y: 54, speed: 1, large: false },
-                Bubble { x: 112, y: 40, speed: 2, large: true },
-                Bubble { x: 22, y: 24, speed: 1, large: false },
-                Bubble { x: 105, y: 18, speed: 1, large: false },
-                Bubble { x: 64, y: 58, speed: 2, large: false },
+                BubbleRender { x: 14, y: 54, speed: 1, large: false },
+                BubbleRender { x: 112, y: 40, speed: 2, large: true },
+                BubbleRender { x: 22, y: 24, speed: 1, large: false },
+                BubbleRender { x: 105, y: 18, speed: 1, large: false },
+                BubbleRender { x: 64, y: 58, speed: 2, large: false },
             ],
             bubble_boost: 0,
             banner_ticks: 0,
@@ -137,6 +130,40 @@ impl Pet {
             credits_lo: (self.credits & 0xFF) as u8,
             credits_hi: (self.credits >> 8) as u8,
             reserved: 0x00,
+        }
+    }
+
+    pub fn to_scene(&self) -> RenderScene<'_> {
+        RenderScene {
+            show_stats: self.show_stats,
+            stasis: self.mode == JarMode::Stasis,
+            hud_visible: self.hud_ticks > 0,
+            fluid: self.fluid,
+            lucidity: self.lucidity,
+            static_load: self.static_load,
+            steps: self.steps,
+            credits: self.credits,
+            selected_menu: self.selected_menu,
+            status_banner: self.status_banner,
+            grade_label: self.specimen_grade(),
+            eye: EyeRenderState {
+                w: self.face.current.w,
+                h: self.face.current.h,
+                radius: self.face.current.radius,
+                top_lid: self.face.current.top_lid,
+                tilt: self.face.current.tilt,
+                bottom_arch: self.face.current.bottom_arch,
+                look_x: self.face.current.look_x,
+                look_y: self.face.current.look_y,
+                swirl_phase: if self.face.mood == Mood::Dizzy {
+                    Some(self.face.swirl_phase)
+                } else {
+                    None
+                },
+                show_cheeks: self.face.show_cheeks,
+                show_tear: self.face.show_tear,
+            },
+            bubbles: &self.bubbles,
         }
     }
 
@@ -235,7 +262,7 @@ impl Pet {
         self.face.register_jolt();
         self.bubble_boost = 18;
 
-        // Every 10 steps mints +1 spendable step coin and refreshes lucidity
+        // Every 10 steps mints +1 spendable step coin and refreshes lucidity[cite: 5]
         if self.steps % 10 == 0 {
             self.credits = self.credits.saturating_add(1);
             self.lucidity = (self.lucidity + 1).min(4);
@@ -279,7 +306,7 @@ impl Pet {
                 }
             }
             MenuOption::Dose => {
-                // Costs 2 step coins for a nutrient flush (free emergency drip if fluid == 0)
+                // Costs 2 step coins for a nutrient flush (free emergency drip if fluid == 0)[cite: 5]
                 if self.fluid == 0 || self.spend_credits(2) {
                     self.fluid = (self.fluid + 1).min(4);
                     self.static_load = self.static_load.saturating_sub(1);

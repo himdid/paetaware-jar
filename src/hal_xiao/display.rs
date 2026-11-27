@@ -11,8 +11,7 @@ use embedded_graphics::{
 use embedded_hal::blocking::i2c::Write;
 use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
 
-use crate::face::Mood;
-use crate::pet::{JarMode, Pet};
+use crate::platform::RenderScene;
 
 pub struct SoftI2c {
     sda: Pin<PA08, PushPullOutput>,
@@ -131,16 +130,16 @@ impl Screen {
         }
     }
 
-    fn draw_jar_atmosphere(&mut self, pet: &Pet, hud_visible: bool) {
-        if pet.mode == JarMode::Stasis {
+    fn draw_jar_atmosphere(&mut self, scene: &RenderScene) {
+        if scene.stasis {
             return;
         }
 
         let on_stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
         let on_fill = PrimitiveStyle::with_fill(BinaryColor::On);
 
-        for b in &pet.bubbles {
-            if hud_visible && (b.y < 12 || b.y > 49) {
+        for b in scene.bubbles {
+            if scene.hud_visible && (b.y < 12 || b.y > 49) {
                 continue;
             }
             if b.large {
@@ -157,29 +156,29 @@ impl Screen {
         }
     }
 
-    fn draw_procedural_face(&mut self, pet: &Pet, base_y: i32) {
+    fn draw_procedural_face(&mut self, scene: &RenderScene, base_y: i32) {
         let on = PrimitiveStyle::with_fill(BinaryColor::On);
         let off = PrimitiveStyle::with_fill(BinaryColor::Off);
-        let pose = &pet.face.current;
+        let eye = &scene.eye;
 
-        let w = pose.w.max(4) as i32;
-        let h = pose.h.max(3) as i32;
-        let r = (pose.radius.max(0) as u32).min((w as u32) / 2).min((h as u32) / 2);
+        let w = eye.w.max(4) as i32;
+        let h = eye.h.max(3) as i32;
+        let r = (eye.radius.max(0) as u32).min((w as u32) / 2).min((h as u32) / 2);
 
-        let (swirl_lx, swirl_ly, swirl_rx, swirl_ry) = if pet.face.mood == Mood::Dizzy {
+        let (swirl_lx, swirl_ly, swirl_rx, swirl_ry) = if let Some(phase) = eye.swirl_phase {
             const DX: [i32; 8] = [0, 4, 5, 4, 0, -4, -5, -4];
             const DY: [i32; 8] = [-4, -3, 0, 3, 4, 3, 0, -3];
-            let i = (pet.face.swirl_phase as usize) % 8;
+            let i = (phase as usize) % 8;
             let j = (i + 4) % 8;
             (DX[i], DY[i], DX[j], DY[j])
         } else {
             (0, 0, 0, 0)
         };
 
-        let left_cx = 36 + (pose.look_x as i32) + swirl_lx;
-        let right_cx = 92 + (pose.look_x as i32) + swirl_rx;
-        let left_cy = base_y + (pose.look_y as i32) + swirl_ly;
-        let right_cy = base_y + (pose.look_y as i32) + swirl_ry;
+        let left_cx = 36 + (eye.look_x as i32) + swirl_lx;
+        let right_cx = 92 + (eye.look_x as i32) + swirl_rx;
+        let left_cy = base_y + (eye.look_y as i32) + swirl_ly;
+        let right_cy = base_y + (eye.look_y as i32) + swirl_ry;
 
         for (is_left, (cx, cy)) in [(true, (left_cx, left_cy)), (false, (right_cx, right_cy))] {
             let x0 = cx - (w / 2);
@@ -193,7 +192,7 @@ impl Screen {
             .draw(&mut self.oled)
             .unwrap();
 
-            let top_drop = (pose.top_lid.max(0) as i32).min(h - 2);
+            let top_drop = (eye.top_lid.max(0) as i32).min(h - 2);
             if top_drop > 0 {
                 Rectangle::new(
                     Point::new(x0 - 1, y0 - 1),
@@ -204,7 +203,7 @@ impl Screen {
                 .unwrap();
             }
 
-            let tilt = pose.tilt as i32;
+            let tilt = eye.tilt as i32;
             let lid_y = y0 + top_drop;
             if tilt > 0 {
                 if is_left {
@@ -249,7 +248,7 @@ impl Screen {
                 }
             }
 
-            let arch = (pose.bottom_arch.max(0) as i32).min(h - 3);
+            let arch = (eye.bottom_arch.max(0) as i32).min(h - 3);
             if arch > 0 {
                 Circle::new(
                     Point::new(x0 + 2, y0 + h - arch),
@@ -261,7 +260,7 @@ impl Screen {
             }
         }
 
-        if pet.face.show_cheeks {
+        if eye.show_cheeks {
             Rectangle::new(Point::new(left_cx - 17, left_cy + 13), Size::new(7, 2))
                 .into_styled(on)
                 .draw(&mut self.oled)
@@ -272,7 +271,7 @@ impl Screen {
                 .unwrap();
         }
 
-        if pet.face.show_tear {
+        if eye.show_tear {
             Rectangle::new(Point::new(left_cx - 10, left_cy + 14), Size::new(2, 5))
                 .into_styled(on)
                 .draw(&mut self.oled)
@@ -280,26 +279,25 @@ impl Screen {
         }
     }
 
-    pub fn render(&mut self, pet: &Pet) {
+    pub fn render(&mut self, scene: &RenderScene) {
         self.oled.clear(BinaryColor::Off).unwrap();
 
         let text_on = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
         let text_off = MonoTextStyle::new(&FONT_5X8, BinaryColor::Off);
         let fill_on = PrimitiveStyle::with_fill(BinaryColor::On);
 
-        // Stats screen (SCAN): displays vitals + lifetime STEP count
-        if pet.show_stats {
+        if scene.show_stats {
             Text::new("== SPECIMEN SCAN ==", Point::new(15, 8), text_on)
                 .draw(&mut self.oled)
                 .unwrap();
-            self.draw_stat_bar("FLUID ", pet.fluid, 14);
-            self.draw_stat_bar("LUCID ", pet.lucidity, 26);
-            self.draw_stat_bar("STATIC", pet.static_load, 38);
+            self.draw_stat_bar("FLUID ", scene.fluid, 14);
+            self.draw_stat_bar("LUCID ", scene.lucidity, 26);
+            self.draw_stat_bar("STATIC", scene.static_load, 38);
 
             let mut stp_buf = [
                 b'S', b'T', b'E', b'P', b'S', b':', b'0', b'0', b'0', b'0', b' ', b'[', b'B', b']',
             ];
-            let mut s = pet.steps.min(9999);
+            let mut s = scene.steps.min(9999);
             for i in (6..10).rev() {
                 stp_buf[i] = b'0' + (s % 10) as u8;
                 s /= 10;
@@ -313,22 +311,20 @@ impl Screen {
             return;
         }
 
-        let hud_visible = pet.hud_ticks > 0;
-        let face_y = if hud_visible { 28 } else { 32 };
+        let face_y = if scene.hud_visible { 28 } else { 32 };
 
-        self.draw_jar_atmosphere(pet, hud_visible);
-        self.draw_procedural_face(pet, face_y);
+        self.draw_jar_atmosphere(scene);
+        self.draw_procedural_face(scene, face_y);
 
-        if !pet.status_banner.is_empty() {
-            Text::new(pet.status_banner, Point::new(84, 8), text_on)
+        if !scene.status_banner.is_empty() {
+            Text::new(scene.status_banner, Point::new(84, 8), text_on)
                 .draw(&mut self.oled)
                 .unwrap();
         }
 
-        // Main screen HUD: displays spendable COIN balance top-left
-        if hud_visible {
+        if scene.hud_visible {
             let mut coin_buf = [b'C', b'O', b'I', b'N', b':', b'0', b'0', b'0', b'0'];
-            let mut c = pet.credits.min(9999);
+            let mut c = scene.credits.min(9999);
             for i in (5..9).rev() {
                 coin_buf[i] = b'0' + (c % 10) as u8;
                 c /= 10;
@@ -338,8 +334,8 @@ impl Screen {
                 .draw(&mut self.oled)
                 .unwrap();
 
-            if pet.status_banner.is_empty() {
-                Text::new(pet.specimen_grade(), Point::new(92, 8), text_on)
+            if scene.status_banner.is_empty() {
+                Text::new(scene.grade_label, Point::new(92, 8), text_on)
                     .draw(&mut self.oled)
                     .unwrap();
             }
@@ -347,7 +343,7 @@ impl Screen {
             let labels = ["PING", "DOSE", "SCAN"];
             for (i, label) in labels.iter().enumerate() {
                 let x = (i as i32) * 42 + 8;
-                if pet.selected_menu == i as u8 {
+                if scene.selected_menu == i as u8 {
                     Rectangle::new(Point::new(x - 2, 52), Size::new(28, 11))
                         .into_styled(fill_on)
                         .draw(&mut self.oled)

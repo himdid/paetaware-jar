@@ -1,10 +1,3 @@
-use atsamd_hal::fugit::RateExtU32;
-use atsamd_hal::gpio::{AlternateD, Pin, PB08, PB09};
-use atsamd_hal::pac::{Gclk, Pm, Sercom4};
-use atsamd_hal::sercom::uart::{self, BaudMode, Oversampling};
-use embedded_hal::blocking::serial::Write as BlockingWrite;
-use embedded_hal::serial::Read;
-
 pub const SYNC_0: u8 = 0xAA;
 pub const SYNC_1: u8 = 0x55;
 pub const FRAME_LEN: usize = 16;
@@ -16,6 +9,7 @@ pub enum PacketType {
     DockIdentify = 0x02,
     DockStimulus = 0x03,
     DockCredits = 0x04,
+    ScriptChunk = 0x10,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -47,22 +41,22 @@ impl DockShell {
     }
 }
 
-/// Fixed 12-byte core payload with 16-bit spendable step currency (`credits`)
+/// Fixed 12-byte core payload with 16-bit spendable step currency (`credits`)[cite: 6]
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct CorePayload {
-    pub species_id: u8,  // 0x01 = Brain-in-a-Jar Wetware Core
-    pub level: u8,       // Derived from lifetime kinetic steps
-    pub xp_lo: u8,       // Low byte of lifetime steps
-    pub xp_hi: u8,       // High byte of lifetime steps
-    pub fluid: u8,       // 0..=4 nutrient level
-    pub lucidity: u8,    // 0..=4 clarity / engagement
-    pub static_load: u8, // 0..=4 synaptic noise
-    pub mood: u8,        // Face Mood enum discriminant
-    pub bond: u8,        // Interaction / glass-tap affinity
-    pub credits_lo: u8,  // Low byte of spendable step currency
-    pub credits_hi: u8,  // High byte of spendable step currency
-    pub reserved: u8,    // Reserved byte for future flags
+    pub species_id: u8,  // 0x01 = Brain-in-a-Jar Wetware Core[cite: 6]
+    pub level: u8,       // Derived from lifetime kinetic steps[cite: 6]
+    pub xp_lo: u8,       // Low byte of lifetime steps[cite: 6]
+    pub xp_hi: u8,       // High byte of lifetime steps[cite: 6]
+    pub fluid: u8,       // 0..=4 nutrient level[cite: 6]
+    pub lucidity: u8,    // 0..=4 clarity / engagement[cite: 6]
+    pub static_load: u8, // 0..=4 synaptic noise[cite: 6]
+    pub mood: u8,        // Face Mood enum discriminant[cite: 6]
+    pub bond: u8,        // Interaction / glass-tap affinity[cite: 6]
+    pub credits_lo: u8,  // Low byte of spendable step currency[cite: 6]
+    pub credits_hi: u8,  // High byte of spendable step currency[cite: 6]
+    pub reserved: u8,    // Reserved byte for future flags[cite: 6]
 }
 
 impl CorePayload {
@@ -90,52 +84,20 @@ pub enum IncomingPacket {
     CreditsDelta { spend: bool, amount: u16 },
 }
 
-pub type Uart4Pads = uart::Pads<
-    Sercom4,
-    Pin<PB09, AlternateD>, // D7: RX
-    Pin<PB08, AlternateD>, // D6: TX
->;
-
-pub type Uart4Port = uart::Uart<uart::Config<Uart4Pads>, uart::Duplex>;
-
-pub struct DockLink {
-    uart: Uart4Port,
+pub struct PacketFramer {
     rx_buf: [u8; FRAME_LEN],
     rx_idx: usize,
 }
 
-impl DockLink {
-    pub fn new(
-        sercom4: Sercom4,
-        pm: &mut Pm,
-        gclk: &mut Gclk,
-        tx_pin: Pin<PB08, AlternateD>,
-        rx_pin: Pin<PB09, AlternateD>,
-    ) -> Self {
-        // Route default GCLK0 (1 MHz OSC8M) to SERCOM4_CORE (ID 0x18) without touching DFLL48M
-        gclk.clkctrl().write(|w| unsafe {
-            w.id().bits(0x18)
-                .gen()
-                .gclk0()
-                .clken()
-                .set_bit()
-        });
-        while gclk.status().read().syncbusy().bit_is_set() {}
-
-        let pads = uart::Pads::default().rx(rx_pin).tx(tx_pin);
-
-        let uart = uart::Config::new(pm, sercom4, pads, 1_000_000u32.Hz())
-            .baud(9_600u32.Hz(), BaudMode::Fractional(Oversampling::Bits16))
-            .enable();
-
+impl PacketFramer {
+    pub const fn new() -> Self {
         Self {
-            uart,
             rx_buf: [0; FRAME_LEN],
             rx_idx: 0,
         }
     }
 
-    fn compute_checksum(buf: &[u8]) -> u8 {
+    pub fn compute_checksum(buf: &[u8]) -> u8 {
         let mut csum = 0u8;
         for &b in &buf[..FRAME_LEN - 1] {
             csum ^= b;
@@ -143,44 +105,40 @@ impl DockLink {
         csum
     }
 
-    pub fn send_telemetry(&mut self, payload: &CorePayload) {
+    pub fn encode_telemetry(payload: &CorePayload) -> [u8; FRAME_LEN] {
         let mut frame = [0u8; FRAME_LEN];
         frame[0] = SYNC_0;
         frame[1] = SYNC_1;
         frame[2] = PacketType::CoreTelemetry as u8;
         frame[3..15].copy_from_slice(&payload.to_bytes());
         frame[15] = Self::compute_checksum(&frame);
-
-        let _ = self.uart.bwrite_all(&frame);
+        frame
     }
 
-    /// Non-blocking byte-by-byte frame assembly from SERCOM4 RX (D7)
-    pub fn poll(&mut self) -> Option<IncomingPacket> {
-        while let Ok(byte) = self.uart.read() {
-            if self.rx_idx == 0 {
-                if byte == SYNC_0 {
-                    self.rx_buf[0] = byte;
-                    self.rx_idx = 1;
-                }
-            } else if self.rx_idx == 1 {
-                if byte == SYNC_1 {
-                    self.rx_buf[1] = byte;
-                    self.rx_idx = 2;
-                } else if byte == SYNC_0 {
-                    self.rx_buf[0] = SYNC_0;
-                    self.rx_idx = 1;
-                } else {
-                    self.rx_idx = 0;
-                }
+    pub fn push_byte(&mut self, byte: u8) -> Option<IncomingPacket> {
+        if self.rx_idx == 0 {
+            if byte == SYNC_0 {
+                self.rx_buf[0] = byte;
+                self.rx_idx = 1;
+            }
+        } else if self.rx_idx == 1 {
+            if byte == SYNC_1 {
+                self.rx_buf[1] = byte;
+                self.rx_idx = 2;
+            } else if byte == SYNC_0 {
+                self.rx_buf[0] = SYNC_0;
+                self.rx_idx = 1;
             } else {
-                self.rx_buf[self.rx_idx] = byte;
-                self.rx_idx += 1;
+                self.rx_idx = 0;
+            }
+        } else {
+            self.rx_buf[self.rx_idx] = byte;
+            self.rx_idx += 1;
 
-                if self.rx_idx == FRAME_LEN {
-                    self.rx_idx = 0;
-                    if Self::compute_checksum(&self.rx_buf) == self.rx_buf[15] {
-                        return Self::decode_frame(&self.rx_buf);
-                    }
+            if self.rx_idx == FRAME_LEN {
+                self.rx_idx = 0;
+                if Self::compute_checksum(&self.rx_buf) == self.rx_buf[15] {
+                    return Self::decode_frame(&self.rx_buf);
                 }
             }
         }

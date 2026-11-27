@@ -1,14 +1,7 @@
 use atsamd_hal::gpio::{Input, Pin, PullUp, PA02, PA04, PA05, PA06, PA10, PA11};
 use atsamd_hal::prelude::*;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum InputEvent {
-    Left,
-    Right,
-    Confirm,
-    Cancel,
-    Step,
-}
+use crate::platform::InputEvent;
 
 pub struct Inputs {
     left: Pin<PA02, Input<PullUp>>,
@@ -42,7 +35,7 @@ impl Inputs {
         }
     }
 
-    /// True when the physical slide switch shorts D9 (PA05) to GND
+    /// True when the physical slide switch shorts D9 (PA05) to GND[cite: 3]
     pub fn is_sleep_switch_on(&self) -> bool {
         self.sleep_switch.is_low().unwrap_or(false)
     }
