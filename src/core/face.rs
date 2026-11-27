@@ -135,6 +135,7 @@ pub struct FaceEngine {
     pub swirl_phase: u8,
     pub show_cheeks: bool,
     pub show_tear: bool,
+    pub forced_gaze: Option<(i16, i16)>,
     override_ticks: u16,
     blink_timer: u16,
     blink_frames: u8,
@@ -157,6 +158,7 @@ impl FaceEngine {
             swirl_phase: 0,
             show_cheeks: false,
             show_tear: false,
+            forced_gaze: None,
             override_ticks: 24,
             blink_timer: 50,
             blink_frames: 0,
@@ -227,6 +229,7 @@ impl FaceEngine {
         if sleeping {
             self.sleep_ticks = self.sleep_ticks.saturating_add(1);
             self.override_ticks = 0;
+            self.forced_gaze = None;
             self.mood = if self.sleep_ticks < 45 {
                 Mood::Sleepy
             } else {
@@ -238,7 +241,10 @@ impl FaceEngine {
                 self.set_temporary_mood(Mood::Surprised, 22);
             }
 
-            if self.override_ticks > 0 {
+            if self.forced_gaze.is_some() {
+                self.mood = Mood::Calm;
+                self.idle_ticks = 0;
+            } else if self.override_ticks > 0 {
                 self.override_ticks -= 1;
             } else {
                 self.idle_ticks = self.idle_ticks.saturating_add(1);
@@ -252,7 +258,15 @@ impl FaceEngine {
 
         let mut target = EyePose::for_mood(self.mood);
 
-        if matches!(self.mood, Mood::Calm | Mood::Lonely | Mood::Sleepy) {
+        if let Some((gx, gy)) = self.forced_gaze {
+            target.look_x = gx;
+            target.look_y = gy;
+            // Widen eyes slightly while signaling a direction
+            if gx != 0 || gy != 0 {
+                target.w += 2;
+                target.h += 2;
+            }
+        } else if matches!(self.mood, Mood::Calm | Mood::Lonely | Mood::Sleepy) {
             if self.glance_timer > 0 {
                 self.glance_timer -= 1;
             } else {
@@ -277,7 +291,7 @@ impl FaceEngine {
             self.swirl_phase = (self.swirl_phase + 1) % 8;
         }
 
-        if self.mood != Mood::Asleep && self.mood != Mood::Dizzy {
+        if self.mood != Mood::Asleep && self.mood != Mood::Dizzy && self.forced_gaze.is_none() {
             if self.blink_frames > 0 {
                 self.blink_frames -= 1;
                 target.h = 3;

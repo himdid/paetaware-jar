@@ -137,9 +137,10 @@ impl Screen {
 
         let on_stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
         let on_fill = PrimitiveStyle::with_fill(BinaryColor::On);
+        let any_hud = scene.hud_visible || scene.echo_hud.is_some();
 
         for b in scene.bubbles {
-            if scene.hud_visible && (b.y < 12 || b.y > 49) {
+            if any_hud && (b.y < 12 || b.y > 49) {
                 continue;
             }
             if b.large {
@@ -311,15 +312,49 @@ impl Screen {
             return;
         }
 
-        let face_y = if scene.hud_visible { 28 } else { 32 };
+        let any_hud = scene.hud_visible || scene.echo_hud.is_some();
+        let face_y = if any_hud { 28 } else { 32 };
 
         self.draw_jar_atmosphere(scene);
         self.draw_procedural_face(scene, face_y);
 
         if !scene.status_banner.is_empty() {
-            Text::new(scene.status_banner, Point::new(84, 8), text_on)
+            Text::new(scene.status_banner, Point::new(82, 8), text_on)
                 .draw(&mut self.oled)
                 .unwrap();
+        }
+
+        // Active Neural Echo Mini-Game HUD
+        if let Some(echo) = scene.echo_hud {
+            let mut buf = [
+                b'R', b'0', b'0', b' ', b'P', b'O', b'T', b':', b'0', b'0', b'0',
+            ];
+            let r = echo.round.min(99);
+            buf[1] = b'0' + (r / 10);
+            buf[2] = b'0' + (r % 10);
+
+            let mut p = echo.pot.min(999);
+            for i in (8..11).rev() {
+                buf[i] = b'0' + (p % 10) as u8;
+                p /= 10;
+            }
+            let hdr = core::str::from_utf8(&buf).unwrap_or("R01 POT:000");
+            Text::new(hdr, Point::new(2, 8), text_on)
+                .draw(&mut self.oled)
+                .unwrap();
+
+            if echo.brain_turn {
+                Text::new("[B] CASH OUT & EXIT", Point::new(14, 60), text_on)
+                    .draw(&mut self.oled)
+                    .unwrap();
+            } else {
+                Text::new("REPEAT: L / R / A / B", Point::new(10, 60), text_on)
+                    .draw(&mut self.oled)
+                    .unwrap();
+            }
+
+            self.oled.flush().unwrap();
+            return;
         }
 
         if scene.hud_visible {
@@ -340,7 +375,7 @@ impl Screen {
                     .unwrap();
             }
 
-            let labels = ["PING", "DOSE", "SCAN"];
+            let labels = ["ECHO", "DOSE", "SCAN"];
             for (i, label) in labels.iter().enumerate() {
                 let x = (i as i32) * 42 + 8;
                 if scene.selected_menu == i as u8 {

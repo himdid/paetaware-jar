@@ -30,6 +30,13 @@ pub struct BubbleRender {
     pub large: bool,
 }
 
+#[derive(Copy, Clone)]
+pub struct EchoHud {
+    pub round: u8,
+    pub pot: u16,
+    pub brain_turn: bool,
+}
+
 pub struct RenderScene<'a> {
     pub show_stats: bool,
     pub stasis: bool,
@@ -42,6 +49,7 @@ pub struct RenderScene<'a> {
     pub selected_menu: u8,
     pub status_banner: &'a str,
     pub grade_label: &'a str,
+    pub echo_hud: Option<EchoHud>,
     pub eye: EyeRenderState,
     pub bubbles: &'a [BubbleRender; 5],
 }

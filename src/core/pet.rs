@@ -1,18 +1,19 @@
+use crate::core::echo::{EchoDir, EchoEvent, EchoGame};
 use crate::core::face::{FaceEngine, Mood};
-use crate::platform::{BubbleRender, EyeRenderState, RenderScene};
+use crate::platform::{BubbleRender, EyeRenderState, InputEvent, RenderScene};
 use crate::protocol::{CorePayload, DockShell, IncomingPacket};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum MenuOption {
-    Ping = 0, // PING: Tap containment glass / neural stimulus[cite: 5]
-    Dose = 1, // DOSE: Flush nutrient fluid (costs 2 step credits)[cite: 5]
-    Scan = 2, // SCAN: Specimen telemetry & wallet readout[cite: 5]
+    Echo = 0, // ECHO: Neural eye-direction memory game
+    Dose = 1, // DOSE: Flush nutrient fluid (costs 2 step credits)
+    Scan = 2, // SCAN: Specimen telemetry & wallet readout
 }
 
 impl MenuOption {
     pub fn from_index(idx: u8) -> Self {
         match idx % 3 {
-            0 => MenuOption::Ping,
+            0 => MenuOption::Echo,
             1 => MenuOption::Dose,
             _ => MenuOption::Scan,
         }
@@ -26,12 +27,12 @@ pub enum JarMode {
 }
 
 pub struct Pet {
-    pub fluid: u8,         // 0..=4 (Nutrient Electrolyte Level)[cite: 5]
-    pub lucidity: u8,      // 0..=4 (Neural Clarity / Engagement)[cite: 5]
-    pub static_load: u8,   // 0..=4 (Synaptic Noise / Agitation)[cite: 5]
-    pub bond: u8,          // 0..=255 (Affinity / Bond)[cite: 5]
-    pub steps: u32,        // Lifetime kinetic steps (XP)[cite: 5]
-    pub credits: u16,      // Spendable step currency (1 coin per 10 steps)[cite: 5]
+    pub fluid: u8,
+    pub lucidity: u8,
+    pub static_load: u8,
+    pub bond: u8,
+    pub steps: u32,
+    pub credits: u16,
     pub mode: JarMode,
     pub docked_shell: DockShell,
     pub selected_menu: u8,
@@ -41,6 +42,7 @@ pub struct Pet {
     pub face: FaceEngine,
     pub bubbles: [BubbleRender; 5],
     pub bubble_boost: u8,
+    pub echo: Option<EchoGame>,
     banner_ticks: u8,
     decay_ticks: u16,
     rng_state: u32,
@@ -54,7 +56,7 @@ impl Pet {
             static_load: 1,
             bond: 10,
             steps: 0,
-            credits: 5, // Starting reserve of 5 step coins[cite: 5]
+            credits: 5,
             mode: JarMode::Active,
             docked_shell: DockShell::None,
             selected_menu: 0,
@@ -70,6 +72,7 @@ impl Pet {
                 BubbleRender { x: 64, y: 58, speed: 2, large: false },
             ],
             bubble_boost: 0,
+            echo: None,
             banner_ticks: 0,
             decay_ticks: 0,
             rng_state: 0x5EED_CAFE,
@@ -137,7 +140,7 @@ impl Pet {
         RenderScene {
             show_stats: self.show_stats,
             stasis: self.mode == JarMode::Stasis,
-            hud_visible: self.hud_ticks > 0,
+            hud_visible: self.hud_ticks > 0 && self.echo.is_none(),
             fluid: self.fluid,
             lucidity: self.lucidity,
             static_load: self.static_load,
@@ -146,6 +149,7 @@ impl Pet {
             selected_menu: self.selected_menu,
             status_banner: self.status_banner,
             grade_label: self.specimen_grade(),
+            echo_hud: self.echo.as_ref().map(|g| g.to_hud()),
             eye: EyeRenderState {
                 w: self.face.current.w,
                 h: self.face.current.h,
@@ -223,29 +227,13 @@ impl Pet {
         self.banner_ticks = ticks;
     }
 
-    pub fn move_left(&mut self) {
-        if self.mode == JarMode::Stasis {
-            return;
-        }
-        self.show_hud();
-        self.selected_menu = (self.selected_menu + 2) % 3;
-        self.face.register_poke(Mood::Calm);
-    }
-
-    pub fn move_right(&mut self) {
-        if self.mode == JarMode::Stasis {
-            return;
-        }
-        self.show_hud();
-        self.selected_menu = (self.selected_menu + 1) % 3;
-        self.face.register_poke(Mood::Calm);
-    }
-
     pub fn set_sleeping(&mut self, sleeping: bool) -> bool {
         if sleeping && self.mode != JarMode::Stasis {
             self.mode = JarMode::Stasis;
             self.show_stats = false;
             self.hud_ticks = 0;
+            self.echo = None;
+            self.face.forced_gaze = None;
             self.set_banner("STASIS", 25);
             true
         } else if !sleeping && self.mode == JarMode::Stasis {
@@ -259,18 +247,96 @@ impl Pet {
 
     pub fn record_step(&mut self) {
         self.steps = self.steps.saturating_add(1);
-        self.face.register_jolt();
+        if self.echo.is_none() {
+            self.face.register_jolt();
+        }
         self.bubble_boost = 18;
 
-        // Every 10 steps mints +1 spendable step coin and refreshes lucidity[cite: 5]
         if self.steps % 10 == 0 {
             self.credits = self.credits.saturating_add(1);
             self.lucidity = (self.lucidity + 1).min(4);
             self.static_load = self.static_load.saturating_sub(1);
-            if self.mode != JarMode::Stasis && self.face.mood != Mood::Dizzy {
+            if self.mode != JarMode::Stasis && self.echo.is_none() && self.face.mood != Mood::Dizzy {
                 self.face.set_temporary_mood(Mood::Happy, 35);
                 self.set_banner("+1 COIN", 20);
             }
+        }
+    }
+
+    pub fn handle_input(&mut self, event: InputEvent) {
+        if event == InputEvent::Step {
+            self.record_step();
+            return;
+        }
+
+        if self.mode == JarMode::Stasis {
+            return;
+        }
+
+        if self.echo.is_some() {
+            let rand_byte = (self.next_rand() & 0xFF) as u8;
+            let outcome = self.echo.as_mut().unwrap().handle_input(event, rand_byte);
+            match outcome {
+                EchoEvent::Continue {
+                    gaze,
+                    banner,
+                    bubble_boost,
+                } => {
+                    if let Some(g) = gaze {
+                        self.face.forced_gaze = Some(g);
+                    }
+                    if let Some((msg, ticks)) = banner {
+                        self.set_banner(msg, ticks);
+                    }
+                    if bubble_boost {
+                        self.bubble_boost = 15;
+                    }
+                }
+                EchoEvent::CashedOut { pot } => {
+                    self.echo = None;
+                    self.face.forced_gaze = None;
+                    self.hud_ticks = 0;
+                    self.credits = self.credits.saturating_add(pot);
+                    if pot > 0 {
+                        self.lucidity = (self.lucidity + 1).min(4);
+                        self.bond = self.bond.saturating_add(2);
+                        self.face.set_temporary_mood(Mood::Happy, 40);
+                        self.set_banner("CASHED!", 30);
+                    } else {
+                        self.set_banner("EXIT", 20);
+                    }
+                }
+                EchoEvent::Lost => {
+                    self.echo = None;
+                    self.face.forced_gaze = None;
+                    self.hud_ticks = 0;
+                    self.static_load = (self.static_load + 1).min(4);
+                    self.face.set_temporary_mood(Mood::Angry, 45);
+                    self.set_banner("LOST!", 30);
+                }
+            }
+            return;
+        }
+
+        match event {
+            InputEvent::Left => {
+                self.show_hud();
+                self.selected_menu = (self.selected_menu + 2) % 3;
+                self.face.register_poke(Mood::Calm);
+            }
+            InputEvent::Right => {
+                self.show_hud();
+                self.selected_menu = (self.selected_menu + 1) % 3;
+                self.face.register_poke(Mood::Calm);
+            }
+            InputEvent::Confirm => self.confirm(),
+            InputEvent::Cancel => {
+                if self.show_stats {
+                    self.show_stats = false;
+                }
+                self.hud_ticks = 0;
+            }
+            InputEvent::Step => {}
         }
     }
 
@@ -293,20 +359,14 @@ impl Pet {
 
         self.show_hud();
         match MenuOption::from_index(self.selected_menu) {
-            MenuOption::Ping => {
-                self.lucidity = (self.lucidity + 1).min(4);
-                self.static_load = (self.static_load + 1).min(4);
-                self.bond = self.bond.saturating_add(1);
-                self.bubble_boost = 12;
-                self.face.register_poke(Mood::Happy);
-                if self.face.mood == Mood::Angry {
-                    self.set_banner("NO TAP!", 25);
-                } else {
-                    self.set_banner("PING!", 20);
-                }
+            MenuOption::Echo => {
+                let first_dir = EchoDir::from_u8((self.next_rand() & 0xFF) as u8);
+                self.echo = Some(EchoGame::new(first_dir));
+                self.hud_ticks = 0;
+                self.face.forced_gaze = Some((0, 0));
+                self.set_banner("WATCH!", 12);
             }
             MenuOption::Dose => {
-                // Costs 2 step coins for a nutrient flush (free emergency drip if fluid == 0)[cite: 5]
                 if self.fluid == 0 || self.spend_credits(2) {
                     self.fluid = (self.fluid + 1).min(4);
                     self.static_load = self.static_load.saturating_sub(1);
@@ -323,13 +383,6 @@ impl Pet {
                 self.show_stats = true;
             }
         }
-    }
-
-    pub fn cancel(&mut self) {
-        if self.show_stats {
-            self.show_stats = false;
-        }
-        self.hud_ticks = 0;
     }
 
     fn update_bubbles(&mut self) {
@@ -365,6 +418,16 @@ impl Pet {
     }
 
     pub fn tick(&mut self) {
+        if let Some(ref mut game) = self.echo {
+            let (gaze, banner) = game.tick();
+            if let Some(g) = gaze {
+                self.face.forced_gaze = Some(g);
+            }
+            if let Some((msg, ticks)) = banner {
+                self.set_banner(msg, ticks);
+            }
+        }
+
         self.face.update(self.mode == JarMode::Stasis);
         self.update_bubbles();
 
@@ -379,14 +442,16 @@ impl Pet {
             }
         }
 
-        self.decay_ticks += 1;
-        if self.decay_ticks >= 160 {
-            self.decay_ticks = 0;
-            if self.mode == JarMode::Stasis {
-                self.static_load = self.static_load.saturating_sub(1);
-            } else {
-                self.fluid = self.fluid.saturating_sub(1);
-                self.lucidity = self.lucidity.saturating_sub(1);
+        if self.echo.is_none() {
+            self.decay_ticks += 1;
+            if self.decay_ticks >= 160 {
+                self.decay_ticks = 0;
+                if self.mode == JarMode::Stasis {
+                    self.static_load = self.static_load.saturating_sub(1);
+                } else {
+                    self.fluid = self.fluid.saturating_sub(1);
+                    self.lucidity = self.lucidity.saturating_sub(1);
+                }
             }
         }
     }

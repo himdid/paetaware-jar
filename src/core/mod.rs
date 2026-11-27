@@ -1,7 +1,8 @@
+pub mod echo;
 pub mod face;
 pub mod pet;
 
-use crate::platform::{InputEvent, PetPlatform};
+use crate::platform::PetPlatform;
 use crate::protocol::PacketFramer;
 use pet::Pet;
 
@@ -42,13 +43,7 @@ impl PetEngine {
         }
 
         if let Some(event) = hw.poll_input() {
-            match event {
-                InputEvent::Left => self.pet.move_left(),
-                InputEvent::Right => self.pet.move_right(),
-                InputEvent::Confirm => self.pet.confirm(),
-                InputEvent::Cancel => self.pet.cancel(),
-                InputEvent::Step => self.pet.record_step(),
-            }
+            self.pet.handle_input(event);
             self.send_telemetry(hw);
             hw.render(&self.pet.to_scene());
         }
