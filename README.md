@@ -1,9 +1,9 @@
 <img width="596" height="567" alt="jartime" src="https://github.com/user-attachments/assets/8211efa1-77a8-48c2-971e-cff7c030cb4b" />
 
 
-# PaetaWare ONE
+# PaetaWare Jar (`peata-ware-jar`)
 
-Bare-metal `#![no_std]` Rust firmware for a modular **"Brain-in-a-Jar" specimen core**, targeting the **Seeed XIAO SAMD21** (`ATSAMD21G18A`, ARM Cortex-M0+) and a **0.96" SSD1306 128×64 I2C OLED** display.
+Bare-metal `#![no_std]` Rust firmware for **PaetaWare Jar**, a modular, pocket-sized virtual digital pet ("Brain-in-a-Jar" core) featuring a procedural animated face, a step-minted economy, physical stasis switch, and magnetic UART docking for external shells (AI Desk Base, Rover, etc).
 
 Designed to function both as a standalone pocket containment unit and as a plug-in neural core that docks into external hardware shells over UART. 
 
@@ -40,15 +40,27 @@ Currently developed and verified in the **Mokxi** circuit simulator prior to bre
 | Kinetic Agitation / Pedometer | `STEP` | `D10 / A10` | `PA06` | Tilt/pedometer pulse input (`+COIN` / jolt) |
 | Onboard Status LED | `L` | Built-in | `PA17` | Active-low telemetry heartbeat indicator |
 
-## Project Structure
+
+
+---
+
+## Architecture Overview
+
+The firmware is strictly decoupled into a hardware-agnostic 
+**Core Engine** and a board-specific **Hardware Abstraction Layer (HAL)**. 
+This keeps game logic portable across microcontrollers (Seeed XIAO SAMD21, RP2040), enables fast host testing, and prepares the core for hot-loadable `.paeta` bytecode scripts over UART.
 
 ```text
-├── .cargo/config.toml   # Cortex-M0+ target (thumbv6m-none-eabi) & linker flags
-├── memory.x             # Flash/RAM memory layout (0x00000000 for simulator ELF)
-└── src/
-    ├── main.rs          # Peripheral init, SERCOM4 dock polling & ~20 FPS loop
-    ├── display.rs       # Bit-banged SoftI2c driver, procedural eyes & auto-hiding HUD
-    ├── face.rs          # Parametric EyePose interpolation & autonomous mood engine
-    ├── input.rs         # Debounced pull-up button, step & stasis switch polling
-    ├── pet.rs           # Brain-in-a-Jar state machine, vitals, bubbles & step currency
-    └── protocol.rs      # Fixed 16-byte UART framing & dock shell handshake (SERCOM4)
+src/
+├── main.rs                 # Entry point: initializes HAL and runs the PetEngine tick loop
+├── platform.rs             # Hardware boundary trait (PetPlatform) & RenderScene snapshot
+├── protocol.rs             # Zero-HAL 16-byte UART framing, checksums, and packet definitions
+├── core/
+│   ├── mod.rs              # PetEngine orchestrator (input routing, tick cadence, telemetry)
+│   ├── pet.rs              # Pure state machine: vitals, step economy, menus, and jar bubbles
+│   └── face.rs             # Procedural eye pose interpolation, blinking, glances, and moods
+└── hal_xiao/
+    ├── mod.rs              # Concrete XiaoBoard implementing PetPlatform for XIAO SAMD21
+    ├── display.rs          # Bit-banged SoftI2c + SSD1306 128x64 procedural renderer
+    ├── input.rs            # Debounced button polling & physical stasis slide-switch reader
+    └── uart.rs             # SERCOM4 non-blocking UART driver (9600 baud)
